@@ -1,0 +1,134 @@
+---
+/**
+ * Every episode, newest first. Rendered on the server from
+ * `GET /site-api/episodes` (in-process). The topic filter is plain links
+ * (`/episodes?topic=inbound-calls`), so every filtered list is a real,
+ * shareable URL; "Older episodes" follows the keyset cursor (`?before=<id>`).
+ */
+import EpisodeThumb from '../../components/EpisodeThumb.astro';
+import {SHOW} from '../../content/site';
+import Base from '../../layouts/Base.astro';
+import {formatDate} from '../../lib/format';
+import {type EpisodesPage, TOPIC_SLUGS, TOPICS, topicLabel} from '../../lib/types';
+import {read} from '../../server/backend';
+import {pageContext} from '../../server/page';
+
+const q = Astro.url.searchParams;
+const topic = TOPIC_SLUGS.includes(q.get('topic') ?? '') ? (q.get('topic') as string) : '';
+const before = q.get('before') ?? undefined;
+
+const {api, site, viewer, abilities} = await pageContext(Astro.request, Astro.response);
+const result = await read<EpisodesPage>(api.episodes.$get({query: {topic, before, perPage: '12'}}));
+const episodes = result?.episodes ?? [];
+// The newest episode gets the wide spot on the first, unfiltered page.
+const featured = !topic && !before ? episodes[0] : undefined;
+const rest = featured ? episodes.slice(1) : episodes;
+const listHref = (t: string) => (t ? `/episodes?topic=${t}` : '/episodes');
+const olderHref = () => {
+  const params = new URLSearchParams();
+  if (topic) params.set('topic', topic);
+  params.set('before', String(result!.nextBefore));
+  return `/episodes?${params}`;
+};
+const meta = (e: {number: number | null; publishedAt: string; durationMinutes: number | null}) =>
+  [formatDate(e.publishedAt), e.durationMinutes ? `${e.durationMinutes} min` : ''].filter(Boolean).join(' · ');
+---
+
+<Base
+  site={site}
+  viewer={viewer}
+  title={topic ? `Episodes: ${topicLabel(topic)}` : 'Episodes'}
+  description={`Every episode of ${SHOW.name}, newest first. Five to ten minutes each.`}>
+  <main>
+    <section class="band tight page-intro">
+      <div class="wrap stack">
+        <p class="eyebrow">{SHOW.name}</p>
+        <div class="section-head flush">
+          <h1 class="page-title">Every episode</h1>
+          {abilities.manageShow && <a class="button ghost" href="/portal/episodes">Manage episodes</a>}
+        </div>
+        <p class="lead">Five to ten minutes each, newest first. Pick a topic to find the one you need before your next up.</p>
+      </div>
+    </section>
+
+    <section class="wrap page-body" aria-label="Episode list">
+      <nav aria-label="Filter by topic">
+        <ul class="chip-tabs">
+          <li><a class="chip-tab" href={listHref('')} aria-current={!topic ? 'page' : undefined}>All topics</a></li>
+          {
+            TOPICS.map(t => (
+              <li>
+                <a class="chip-tab" href={listHref(t.slug)} aria-current={topic === t.slug ? 'page' : undefined}>
+                  {t.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+
+      {
+        !result ? (
+          <div class="empty-state">
+            <h2 class="card-title">Episodes are not available right now</h2>
+            <p class="muted">Please try again in a minute.</p>
+            <a class="button ghost" href="/episodes">Try again</a>
+          </div>
+        ) : episodes.length === 0 ? (
+          <div class="empty-state">
+            <h2 class="card-title">{topic ? `No ${topicLabel(topic).toLowerCase()} episodes yet` : 'The first episodes are on their way'}</h2>
+            <p class="muted">Have a question on this? It could be the next episode.</p>
+            <div class="actions">
+              <a class="button" href="/ask">Ask Mark &amp; Hank</a>
+              {topic && <a class="button ghost" href="/episodes">See all episodes</a>}
+            </div>
+          </div>
+        ) : (
+          <>
+            {featured && (
+              <a class="episode-feature" href={`/episodes/${encodeURIComponent(featured.slug)}`}>
+                <EpisodeThumb episode={featured} eager />
+                <div>
+                  <p class="episode-meta">
+                    <span class="badge">Newest</span>
+                    <span class="badge grey">{topicLabel(featured.topic)}</span>
+                    <span>{meta(featured)}</span>
+                  </p>
+                  <h2>{featured.title}</h2>
+                  <p class="lead">{featured.summary}</p>
+                  <span class="button start">
+                    {featured.youtubeId ? 'Watch the episode' : 'Read the episode notes'}
+                  </span>
+                </div>
+              </a>
+            )}
+            <ul class="episode-grid">
+              {rest.map(episode => (
+                <li>
+                  <a class="episode-card" href={`/episodes/${encodeURIComponent(episode.slug)}`}>
+                    <EpisodeThumb episode={episode} />
+                    <p class="episode-meta">
+                      <span class="badge">{topicLabel(episode.topic)}</span>
+                      <span>{meta(episode)}</span>
+                    </p>
+                    <h3>{episode.title}</h3>
+                    <p>{episode.summary}</p>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      }
+
+      {
+        (before || result?.nextBefore) && (
+          <nav class="pager" aria-label="More episodes">
+            {before && <a class="button ghost" href={listHref(topic)}>← Newest episodes</a>}
+            {result?.nextBefore && <a class="button ghost" href={olderHref()}>Older episodes →</a>}
+          </nav>
+        )
+      }
+    </section>
+  </main>
+</Base>

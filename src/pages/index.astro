@@ -1,97 +1,177 @@
 ---
 /**
- * The home page: PRERENDERED (built once, served as a static file, no server
- * work per visit) and made of sections. Words in `src/content/site.ts`.
+ * The home page: PRERENDERED (built once, served as a static file). Words in
+ * `src/content/site.ts`.
  *
- * What changes often is filled in by the browser after load, from the Site API:
- *   - the visitor (`<Base isStatic>`): members see "Open the community"
- *     (`data-member-only`), guests "Join" (`data-guest-only`)
- *   - latest posts and open roles (`data-live` sections, below)
- * A section with no data stays hidden.
+ * The latest episode changes when the owner adds one in /portal/episodes, so
+ * the browser fills it in after load from `GET /site-api/episodes` (built with
+ * `textContent` only). Until then the frame shows a skeleton; if the list
+ * cannot be read, the frame shows a photo and a link to all episodes.
  */
-import BrandMark from '../components/BrandMark.astro';
-import {HOME, withName} from '../content/site';
+import Icon from '../components/Icon.astro';
+import {HOME, PHOTOS, SHOW, TOPIC_COPY} from '../content/site';
 import Base from '../layouts/Base.astro';
 import {staticContext} from '../server/page';
 
 export const prerender = true;
 
 const {site, viewer} = await staticContext(Astro.request);
-const name = site?.name ?? 'Community';
 ---
 
-<Base site={site} viewer={viewer} isStatic>
+<Base site={site} viewer={viewer} isStatic description={`${SHOW.name}: ${SHOW.tagline}`}>
   <main>
-    <section class="hero">
-      <div class="wrap center">
-        <BrandMark site={site} size={72} />
-        <p class="eyebrow" data-brand-text={HOME.hero.eyebrow}>{withName(HOME.hero.eyebrow, name)}</p>
-        <h1>{HOME.hero.title}</h1>
-        <p class="lede">{HOME.hero.body}</p>
-        {/* Join, Log in and the feed are the community app: plain links, always. */}
-        <div class="actions" data-guest-only>
-          <a class="button" href="/register" data-brand-text="Join {name}">Join {name}</a>
-          <a class="button ghost" href="/login">Log in</a>
+    <section class="home-hero">
+      <div class="wrap home-hero-inner">
+        <div class="home-hero-text">
+          <p class="eyebrow">{HOME.hero.eyebrow}</p>
+          <h1 class="hero-title">{HOME.hero.title}</h1>
+          <p class="lead">{HOME.hero.body}</p>
+          <div class="actions" data-guest-only>
+            <a class="button lg" href="/join">{HOME.hero.cta}</a>
+          </div>
+          <div class="actions" data-member-only hidden>
+            <a class="button lg" href="/feeds">Open the community</a>
+          </div>
+          <p class="hero-note">
+            New here? <a href="/episodes">Watch the episodes</a> or <a href="/ask">ask Mark &amp; Hank a question</a>.
+          </p>
         </div>
-        <div class="actions" data-member-only hidden>
-          <a class="button" href="/feeds">Open the community</a>
-          <a class="button ghost" href="/portal">Your dashboard</a>
+
+        <div class="home-hero-media" data-latest>
+          <div class="frame ratio-video video-frame" data-latest-frame aria-busy="true">
+            <div class="skeleton skeleton-fill"></div>
+          </div>
+          <div class="media-caption" data-latest-caption>
+            <span class="skeleton-line" style="width: 60%" aria-hidden="true"></span>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="wrap section">
-      <h2 class="center">{HOME.features.title}</h2>
-      <div class="grid grid-3">
-        {
-          HOME.features.items.map(feature => (
-            <div class="card">
-              <h3>{feature.title}</h3>
-              <p class="muted">{feature.body}</p>
+    <section class="band band-alt" aria-labelledby="show-title">
+      <div class="wrap">
+        <div class="split">
+          <div class="stack">
+            <p class="eyebrow">{HOME.intro.eyebrow}</p>
+            <h2 class="h-section" id="show-title">{HOME.intro.title}</h2>
+            {HOME.intro.paragraphs.map(p => <p class="body-copy">{p}</p>)}
+            <div class="actions">
+              <a class="button ghost" href="/about">Meet Mark and Hank</a>
             </div>
-          ))
-        }
-      </div>
-    </section>
-
-    <section class="wrap section" data-live="posts" hidden>
-      <div class="section-head">
-        <h2>Latest from the blog</h2>
-        <a href="/blog">All posts →</a>
-      </div>
-      <div class="grid grid-3" data-list></div>
-    </section>
-
-    <section class="wrap section" data-live="jobs" hidden>
-      <div class="section-head">
-        <h2>Open roles</h2>
-        <a href="/jobs">All jobs →</a>
-      </div>
-      <ul class="job-list" data-list></ul>
-    </section>
-
-    <section class="wrap narrow section center">
-      <blockquote class="quote">
-        <p>“{HOME.quote.text}”</p>
-        <cite>— {HOME.quote.author}</cite>
-      </blockquote>
-    </section>
-
-    <section class="wrap section" data-guest-only>
-      <div class="card cta">
-        <div>
-          <h2 data-brand-text={HOME.cta.title}>{withName(HOME.cta.title, name)}</h2>
-          <p class="muted">{HOME.cta.body}</p>
+          </div>
+          <div class="frame ratio-photo">
+            <img
+              src={PHOTOS.training}
+              alt="A sales trainer talking with a small group of salespeople in a bright office"
+              loading="lazy"
+              width="1600"
+              height="1200"
+            />
+          </div>
         </div>
-        <a class="button" href="/register">Join now</a>
+        <div class="rule-cols">
+          {
+            HOME.intro.pillars.map(pillar => (
+              <div>
+                <h3>{pillar.title}</h3>
+                <p>{pillar.body}</p>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="audience-title">
+      <div class="wrap">
+        <div class="stack">
+          <p class="eyebrow">{HOME.audience.eyebrow}</p>
+          <h2 class="h-section" id="audience-title">{HOME.audience.title}</h2>
+        </div>
+        <div class="rule-cols">
+          {
+            HOME.audience.items.map(item => (
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="band band-alt" aria-labelledby="topics-title">
+      <div class="wrap split top">
+        <div class="stack">
+          <p class="eyebrow">{HOME.topics.eyebrow}</p>
+          <h2 class="h-section" id="topics-title">{HOME.topics.title}</h2>
+          <div class="actions">
+            <a class="button ghost" href="/topics">See every topic</a>
+          </div>
+        </div>
+        <ul class="topic-list">
+          {
+            TOPIC_COPY.map((topic, i) => (
+              <li>
+                <a class="topic-link" href={`/topics#${topic.slug}`}>
+                  <span class="topic-num">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="topic-name">{topic.title}</span>
+                  <Icon name="arrow-right" class="topic-arrow" />
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="more-title" data-more hidden>
+      <div class="wrap">
+        <div class="section-head">
+          <div class="stack">
+            <p class="eyebrow">Recent episodes</p>
+            <h2 class="h-md" id="more-title">Catch up on what you missed.</h2>
+          </div>
+          <a class="more" href="/episodes">All episodes →</a>
+        </div>
+        <ul class="episode-grid" data-more-list></ul>
+      </div>
+    </section>
+
+    <section class="band band-wash" aria-labelledby="community-title">
+      <div class="wrap split">
+        <div class="stack">
+          <p class="eyebrow">{HOME.community.eyebrow}</p>
+          <h2 class="h-section" id="community-title">{HOME.community.title}</h2>
+          <p class="lead">{HOME.community.body}</p>
+          <div class="actions" data-guest-only>
+            <a class="button lg" href="/join">{HOME.hero.cta}</a>
+            <a class="button lg ghost" href="/login?redirectTo=%2F">Log in</a>
+          </div>
+          <div class="actions" data-member-only hidden>
+            <a class="button lg" href="/feeds">Open the community</a>
+          </div>
+        </div>
+        <ul class="fact-list fact-list-lg">
+          {
+            HOME.community.points.map(point => (
+              <li>
+                <Icon name="check" />
+                {point}
+              </li>
+            ))
+          }
+        </ul>
       </div>
     </section>
   </main>
 </Base>
 
 <script>
+  import {EPISODE_FALLBACK_PHOTO, PHOTOS} from '../content/site';
   import {formatDate} from '../lib/format';
-  import type {JobsPage, PostsPage} from '../lib/types';
+  import {type EpisodeSummary, type EpisodesPage, topicLabel} from '../lib/types';
 
   /** One element with text: never HTML from an answer. */
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') => {
@@ -101,54 +181,109 @@ const name = site?.name ?? 'Community';
     return node;
   };
 
-  async function live<T>(name: string, path: string, render: (data: T, list: HTMLElement) => number) {
-    const section = document.querySelector<HTMLElement>(`[data-live="${name}"]`);
-    const list = section?.querySelector<HTMLElement>('[data-list]');
-    if (!section || !list) return;
-    try {
-      const res = await fetch(path, {headers: {accept: 'application/json'}});
-      if (!res.ok) return;
-      if (render((await res.json()) as T, list) > 0) section.hidden = false;
-    } catch {
-      // The section stays hidden: the page is complete without it.
+  const PLAY =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L7.5 3.64A1 1 0 0 0 6 4.5Z" fill="currentColor"/></svg>';
+
+  const thumbOf = (episode: EpisodeSummary) =>
+    episode.youtubeId
+      ? `https://i.ytimg.com/vi/${encodeURIComponent(episode.youtubeId)}/hqdefault.jpg`
+      : EPISODE_FALLBACK_PHOTO;
+  const href = (episode: EpisodeSummary) => `/episodes/${encodeURIComponent(episode.slug)}`;
+
+  const frame = document.querySelector<HTMLElement>('[data-latest-frame]')!;
+  const caption = document.querySelector<HTMLElement>('[data-latest-caption]')!;
+
+  /** The latest episode: a click-to-play YouTube player (nothing loads from YouTube until then). */
+  function showLatest(episode: EpisodeSummary) {
+    frame.replaceChildren();
+    const img = el('img');
+    img.src = episode.youtubeId
+      ? `https://i.ytimg.com/vi/${encodeURIComponent(episode.youtubeId)}/maxresdefault.jpg`
+      : EPISODE_FALLBACK_PHOTO;
+    img.alt = '';
+    img.width = 1280;
+    img.height = 720;
+    if (episode.youtubeId) img.onerror = () => (img.src = thumbOf(episode));
+    frame.append(img);
+
+    if (episode.youtubeId) {
+      const play = el('button', 'play-badge');
+      play.type = 'button';
+      play.setAttribute('aria-label', `Play episode: ${episode.title}`);
+      play.innerHTML = PLAY; // our own constant, not data
+      play.addEventListener('click', () => {
+        const iframe = el('iframe');
+        iframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(episode.youtubeId!)}?autoplay=1&rel=0`;
+        iframe.title = episode.title;
+        iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+        iframe.allowFullscreen = true;
+        frame.replaceChildren(iframe);
+        iframe.focus();
+      });
+      frame.append(el('span', 'badge overlay', 'Latest episode'), play);
+    } else {
+      const pending = el('a', 'video-pending', 'Video coming soon: read the episode notes');
+      (pending as HTMLAnchorElement).href = href(episode);
+      frame.append(el('span', 'badge overlay', 'Latest episode'), pending);
     }
+    frame.removeAttribute('aria-busy');
+
+    caption.replaceChildren();
+    const title = el('a', '', episode.title);
+    (title as HTMLAnchorElement).href = href(episode);
+    const meta = [episode.number ? `Ep. ${episode.number}` : '', formatDate(episode.publishedAt), episode.durationMinutes ? `${episode.durationMinutes} min` : '']
+      .filter(Boolean)
+      .join(' · ');
+    caption.append(title, el('span', 'muted small', meta));
   }
 
-  void live<PostsPage>('posts', '/site-api/posts?perPage=3', (data, list) => {
-    for (const post of data.posts) {
-      const card = el('a', 'post-card');
-      card.href = `/blog/${encodeURIComponent(post.slug)}`;
-      if (post.coverUrl) {
-        const img = el('img', 'cover');
-        img.src = post.coverUrl;
-        img.alt = '';
-        img.loading = 'lazy';
-        card.append(img);
-      } else {
-        card.append(el('span', 'cover cover-empty'));
-      }
-      const body = el('div', 'post-card-body');
-      body.append(el('h3', '', post.title));
-      if (post.excerpt) body.append(el('p', 'muted small', post.excerpt.slice(0, 110)));
-      body.append(el('p', 'meta', formatDate(post.publishedAt)));
-      card.append(body);
-      list.append(card);
-    }
-    return data.posts.length;
-  });
+  /** No episode list: a photo and a way to the episodes page, never an empty frame. */
+  function showFallback() {
+    frame.replaceChildren();
+    const img = el('img');
+    img.src = PHOTOS.handshake;
+    img.alt = 'A salesperson and a customer shaking hands across a desk';
+    frame.append(img);
+    frame.removeAttribute('aria-busy');
+    caption.replaceChildren();
+    const link = el('a', '', 'Watch the latest episodes →');
+    (link as HTMLAnchorElement).href = '/episodes';
+    caption.append(link);
+  }
 
-  void live<JobsPage>('jobs', '/site-api/jobs', (data, list) => {
-    for (const job of data.jobs.slice(0, 3)) {
-      const row = el('a', 'job-row');
-      row.href = `/jobs/${encodeURIComponent(job.slug)}`;
-      const text = el('div');
-      text.append(el('h3', '', job.title), el('p', 'muted', `${job.company} · ${job.location}`));
-      row.append(text);
-      if (job.remote) row.append(el('span', 'chip chip-tag', 'Remote'));
-      const item = el('li');
-      item.append(row);
-      list.append(item);
+  function card(episode: EpisodeSummary) {
+    const a = el('a', 'episode-card');
+    a.href = href(episode);
+    const thumb = el('div', 'thumb');
+    const img = el('img');
+    img.src = thumbOf(episode);
+    img.alt = '';
+    img.loading = 'lazy';
+    thumb.append(img);
+    if (episode.number) thumb.append(el('span', 'badge overlay', `Ep. ${episode.number}`));
+    if (!episode.youtubeId) thumb.append(el('span', 'video-pending', 'Video coming soon'));
+    const meta = el('p', 'episode-meta');
+    meta.append(el('span', 'badge', topicLabel(episode.topic)), el('span', '', formatDate(episode.publishedAt)));
+    a.append(thumb, meta, el('h3', '', episode.title), el('p', '', episode.summary));
+    const li = el('li');
+    li.append(a);
+    return li;
+  }
+
+  (async () => {
+    try {
+      const res = await fetch('/site-api/episodes?perPage=4', {headers: {accept: 'application/json'}});
+      if (!res.ok) throw new Error(String(res.status));
+      const {episodes} = (await res.json()) as EpisodesPage;
+      if (!episodes.length) return showFallback();
+      showLatest(episodes[0]);
+      const rest = episodes.slice(1);
+      if (rest.length) {
+        document.querySelector('[data-more-list]')!.append(...rest.map(card));
+        document.querySelector<HTMLElement>('[data-more]')!.hidden = false;
+      }
+    } catch {
+      showFallback();
     }
-    return Math.min(3, data.jobs.length);
-  });
+  })();
 </script>

@@ -4,9 +4,10 @@ import type {Abilities} from '../lib/types';
 import {config} from '../platform/config';
 import {problem, sameOrigin} from '../platform/guards';
 import {isPreview} from '../platform/api';
-import {jobRoutes, MANAGE_JOBS} from './routes/jobs';
+import {episodeRoutes, MANAGE_SHOW} from './routes/episodes';
 import {memberRoutes} from './routes/members';
 import {postRoutes} from './routes/posts';
+import {questionRoutes} from './routes/questions';
 import {siteRoutes} from './routes/site';
 import {uploadRoutes} from './routes/uploads';
 import {getViewer, getViewerPermissions, grants} from '../platform/viewer';
@@ -24,7 +25,8 @@ import {getViewer, getViewerPermissions, grants} from '../platform/viewer';
  *   GET  /me            the visitor + what they may do here
  *   GET  /site          the community's brand                 routes/site.ts
  *   *    /posts/...     the community's blog (public API)      routes/posts.ts
- *   *    /jobs/...      the job board (Site Database)          routes/jobs.ts
+ *   *    /episodes/...  the show's episodes (Site Database)   routes/episodes.ts
+ *   *    /questions/... Ask Mark & Hank (Site Database)       routes/questions.ts
  *   GET  /members      members directory (Community Key)      routes/members.ts
  *   *    /uploads       a member's files (Site Database)       routes/uploads.ts
  *
@@ -55,13 +57,16 @@ export const app = new Hono()
     ]);
     c.header('Cache-Control', 'private, no-store');
     const permissions = viewer.state === 'member' ? perms : new Set<string>();
-    const abilities: Abilities = {manageJobs: grants(permissions, MANAGE_JOBS)};
+    const abilities: Abilities = {
+      manageShow: grants(permissions, MANAGE_SHOW),
+    };
     return c.json({viewer, abilities});
   })
 
   .route('/site', siteRoutes)
   .route('/posts', postRoutes)
-  .route('/jobs', jobRoutes)
+  .route('/episodes', episodeRoutes)
+  .route('/questions', questionRoutes)
   .route('/members', memberRoutes)
   .route('/uploads', uploadRoutes)
 

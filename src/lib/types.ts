@@ -44,35 +44,10 @@ export interface PostsPage {
   hasMore: boolean;
 }
 
-export type JobType = 'full-time' | 'part-time' | 'contract' | 'internship';
-export const JOB_TYPES: JobType[] = ['full-time', 'part-time', 'contract', 'internship'];
-
-export interface JobSummary {
-  id: number;
-  slug: string;
-  title: string;
-  company: string;
-  location: string;
-  type: string;
-  remote: boolean;
-  status: string;
-  createdAt: string;
-}
-
-export interface Job extends JobSummary {
-  description: string;
-  applyUrl: string;
-}
-
-export interface JobsPage {
-  jobs: JobSummary[];
-  /** Pass back as `?before=` for the next page; null on the last one. */
-  nextBefore: number | null;
-}
-
 /** What the visitor may do on THIS site (derived from their Role Manager codenames). */
 export interface Abilities {
-  manageJobs: boolean;
+  /** Add and edit episodes, read listener questions (`community:site:update`). */
+  manageShow: boolean;
 }
 
 export interface Member {
@@ -90,4 +65,72 @@ export interface UploadRow {
   fileType: string;
   fileSize: number;
   createdAt: string;
+}
+
+// ------------------------------------------------------------- the show --
+
+/** The topics the show covers. `slug` is stored on each episode. */
+export const TOPICS = [
+  {slug: 'unsold-follow-up', label: 'Unsold showroom follow-up'},
+  {slug: 'internet-leads', label: 'Internet leads'},
+  {slug: 'road-to-the-sale', label: 'The road to the sale'},
+  {slug: 'crm-follow-up', label: 'CRM follow-up'},
+  {slug: 'inbound-calls', label: 'Inbound calls'},
+  {slug: 'outbound-calls', label: 'Outbound calls'},
+  {slug: 'career', label: 'Building a career'},
+] as const;
+export type TopicSlug = (typeof TOPICS)[number]['slug'];
+export const TOPIC_SLUGS: string[] = TOPICS.map(topic => topic.slug);
+export const topicLabel = (slug: string) => TOPICS.find(topic => topic.slug === slug)?.label ?? slug;
+
+export interface EpisodeSummary {
+  id: number;
+  slug: string;
+  number: number | null;
+  title: string;
+  summary: string;
+  topic: string;
+  youtubeId: string | null;
+  durationMinutes: number | null;
+  publishedAt: string;
+  status: string;
+}
+
+export interface Episode extends EpisodeSummary {
+  /** Plain text; paragraphs separated by blank lines. */
+  notes: string;
+}
+
+export interface EpisodesPage {
+  episodes: EpisodeSummary[];
+  /** Pass back as `?before=` for the next page; null on the last one. */
+  nextBefore: number | null;
+}
+
+/** Who is asking, on the Ask Mark & Hank form. */
+export const ASKER_ROLES = [
+  {value: 'new-rep', label: 'New to car sales'},
+  {value: 'veteran', label: 'Veteran salesperson'},
+  {value: 'bdc', label: 'BDC rep'},
+  {value: 'manager', label: 'Sales manager'},
+  {value: 'other', label: 'Something else'},
+] as const;
+export const ASKER_ROLE_VALUES: string[] = ASKER_ROLES.map(role => role.value);
+
+export const QUESTION_STATUSES = ['new', 'picked', 'done'] as const;
+
+export interface QuestionRow {
+  id: number;
+  name: string;
+  role: string;
+  dealership: string;
+  body: string;
+  okToFeature: boolean;
+  status: string;
+  createdAt: string;
+}
+
+export interface QuestionsPage {
+  questions: QuestionRow[];
+  nextBefore: number | null;
 }

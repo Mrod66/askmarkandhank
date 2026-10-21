@@ -37,11 +37,11 @@ const [featured, ...rest] = page === 1 && !search ? posts : [null, ...posts];
     <header class="pub-masthead">
       <BrandMark site={site} size={64} />
       <h1>{name}</h1>
-      <p class="pub-tagline">Stories, guides and updates from the community.</p>
+      <p class="pub-tagline">Notes, scripts and lessons from Mark, Hank and the community.</p>
       {
         viewer.state !== 'member' && (
-          <a class="button" href="/register?redirectTo=%2Fblog">
-            Join {name}
+          <a class="button" href="/join">
+            Join the Community
           </a>
         )
       }

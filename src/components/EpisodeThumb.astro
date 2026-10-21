@@ -1,0 +1,33 @@
+---
+/**
+ * An episode's picture: the YouTube thumbnail when it has a video, otherwise
+ * the stand-in photo with "Video coming soon". Used by the lists.
+ */
+import {EPISODE_FALLBACK_PHOTO} from '../content/site';
+import type {EpisodeSummary} from '../lib/types';
+import Icon from './Icon.astro';
+
+interface Props {
+  episode: EpisodeSummary;
+  eager?: boolean;
+}
+
+const {episode, eager = false} = Astro.props;
+const src = episode.youtubeId
+  ? `https://i.ytimg.com/vi/${encodeURIComponent(episode.youtubeId)}/hqdefault.jpg`
+  : EPISODE_FALLBACK_PHOTO;
+---
+
+<div class="thumb">
+  <img src={src} alt="" loading={eager ? 'eager' : 'lazy'} decoding="async" width="640" height="360" />
+  {episode.number && <span class="badge overlay">Ep. {episode.number}</span>}
+  {
+    episode.youtubeId ? (
+      <span class="play-badge">
+        <Icon name="play" />
+      </span>
+    ) : (
+      <span class="video-pending">Video coming soon</span>
+    )
+  }
+</div>

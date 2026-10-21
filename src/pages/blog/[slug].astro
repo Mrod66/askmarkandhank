@@ -64,8 +64,8 @@ const name = site?.name ?? 'Community';
         {viewer.state !== 'member' && (
           <aside class="article-cta">
             <h2>Enjoyed this? Join {name}</h2>
-            <p class="muted">Get the conversation, the events and every new post.</p>
-            <a class="button" href={`/register?redirectTo=${encodeURIComponent(Astro.url.pathname)}`}>Join for free</a>
+            <p class="muted">Talk it through with other salespeople, and bring your questions to Mark and Hank.</p>
+            <a class="button" href="/join">Join the Community</a>
           </aside>
         )}
 

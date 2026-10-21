@@ -1,0 +1,87 @@
+---
+/**
+ * The topics the show covers. Static: built once, served as a file. Each
+ * topic links to its filtered episode list (`/episodes?topic=<slug>`), and
+ * has an anchor (`/topics#<slug>`) the home page links to.
+ */
+import Icon from '../components/Icon.astro';
+import {PHOTOS, SHOW, TOPIC_COPY} from '../content/site';
+import Base from '../layouts/Base.astro';
+import {staticContext} from '../server/page';
+
+export const prerender = true;
+
+const {site, viewer} = await staticContext(Astro.request);
+---
+
+<Base
+  site={site}
+  viewer={viewer}
+  isStatic
+  title="Topics we cover"
+  description="Unsold showroom follow-up, internet leads, the road to the sale, CRM follow-up, inbound and outbound calls, and building a career.">
+  <main>
+    <section class="band tight">
+      <div class="wrap split">
+        <div class="stack">
+          <p class="eyebrow">Topics we cover</p>
+          <h1 class="page-title">The parts of the job that changed the most.</h1>
+          <p class="lead">
+            Seven subjects, one customer at a time. Every episode of {SHOW.shortName} lands in one of them.
+          </p>
+        </div>
+        <div class="frame ratio-photo">
+          <img
+            src={PHOTOS.phone}
+            alt="A salesperson checking a phone beside an open laptop"
+            width="1600"
+            height="1200"
+          />
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap page-body" aria-label="Topics">
+      {
+        TOPIC_COPY.map((topic, i) => (
+          <article class="topic-block" id={topic.slug} aria-labelledby={`t-${topic.slug}`}>
+            <div>
+              <span class="topic-num">{String(i + 1).padStart(2, '0')}</span>
+              <h2 id={`t-${topic.slug}`}>{topic.title}</h2>
+              <p class="muted topic-short">{topic.short}</p>
+            </div>
+            <div>
+              {topic.body.map(p => (
+                <p class="body-copy">{p}</p>
+              ))}
+              <ul class="topic-points">
+                {topic.points.map(point => (
+                  <li>
+                    <Icon name="check" />
+                    {point}
+                  </li>
+                ))}
+              </ul>
+              <a class="button ghost" href={`/episodes?topic=${topic.slug}`}>
+                Episodes on this topic <Icon name="arrow-right" class="topic-arrow" />
+              </a>
+            </div>
+          </article>
+        ))
+      }
+    </section>
+
+    <section class="band band-alt" aria-labelledby="missing-title">
+      <div class="wrap split">
+        <div class="stack">
+          <h2 class="h-md" id="missing-title">Don’t see your situation?</h2>
+          <p class="lead">Send it to Mark and Hank. The best questions become episodes.</p>
+        </div>
+        <div class="actions">
+          <a class="button lg" href="/ask">Ask Mark &amp; Hank</a>
+          <a class="button lg ghost" href="/episodes">Browse episodes</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>

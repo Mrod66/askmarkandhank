@@ -1,0 +1,284 @@
+---
+/**
+ * Ask Mark & Hank: the listener question form and the show's email address.
+ * Static: built once, served as a file. The form posts to
+ * `POST /site-api/questions` (`src/server/routes/questions.ts`) from the
+ * browser; site admins read the questions at /portal/questions.
+ *
+ * Validation runs in place (never browser bubbles) with the SAME limits as
+ * the server (`QUESTION_LIMITS`); the server checks again and names the field.
+ */
+import Icon from '../components/Icon.astro';
+import {ASK, SHOW} from '../content/site';
+import Base from '../layouts/Base.astro';
+import {ASKER_ROLES} from '../lib/types';
+import {staticContext} from '../server/page';
+
+export const prerender = true;
+
+const {site, viewer} = await staticContext(Astro.request);
+---
+
+<Base site={site} viewer={viewer} isStatic title="Ask Mark & Hank" description={ASK.lede}>
+  <main>
+    <section class="band tight page-intro">
+      <div class="wrap stack">
+        <p class="eyebrow">{ASK.eyebrow}</p>
+        <h1 class="page-title">{ASK.title}</h1>
+        <p class="lead">{ASK.lede}</p>
+      </div>
+    </section>
+
+    <section class="wrap page-body">
+      <div class="ask-layout">
+        <div>
+          <form class="form-panel" novalidate data-ask-form aria-labelledby="form-title">
+            <h2 id="form-title">Send your question</h2>
+
+            <div class="form-row">
+              <div class="field">
+                <label for="q-name">First name</label>
+                <input id="q-name" name="name" autocomplete="given-name" aria-describedby="q-name-hint" />
+                <p class="field-hint" id="q-name-hint">We may read it on the show if you say yes below.</p>
+              </div>
+              <div class="field">
+                <label for="q-role">I am a…</label>
+                <select id="q-role" name="role" aria-describedby="q-role-hint">
+                  <option value="">Choose one</option>
+                  {ASKER_ROLES.map(role => <option value={role.value}>{role.label}</option>)}
+                </select>
+                <p class="field-hint" id="q-role-hint">So we answer at the right level.</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="q-dealership">Dealership or city <span class="muted">(optional)</span></label>
+              <input id="q-dealership" name="dealership" autocomplete="organization" placeholder="e.g. a Ford store in Phoenix" aria-describedby="q-dealership-hint" />
+              <p class="field-hint" id="q-dealership-hint">Only for context. We never name your store on the show.</p>
+            </div>
+
+            <div class="field">
+              <label for="q-body">Your question</label>
+              <textarea
+                id="q-body"
+                name="body"
+                rows="7"
+                placeholder="What did the customer say, what did you say back, and where did it go sideways?"
+                aria-describedby="q-body-hint"></textarea>
+              <p class="field-hint" id="q-body-hint" data-counter>Up to 2000 characters. Leave out customer names.</p>
+            </div>
+
+            <label class="check">
+              <input type="checkbox" name="okToFeature" />
+              <span>Mark and Hank may read my question and first name on the show.</span>
+            </label>
+
+            {/* A person never sees or fills this; a spam bot does. */}
+            <div class="hp" aria-hidden="true">
+              <label for="q-website">Website</label>
+              <input id="q-website" name="website" tabindex="-1" autocomplete="off" />
+            </div>
+
+            <p class="form-error" role="alert" data-form-error hidden></p>
+
+            <div class="actions">
+              <button class="button lg" type="submit" data-submit>Send my question</button>
+            </div>
+          </form>
+
+          <div class="form-done" data-form-done hidden tabindex="-1" role="status">
+            <h2>Got it. Thank you.</h2>
+            <p>
+              Mark and Hank read every question. If yours is picked for an episode, it will show up on the
+              <a href="/episodes">episodes page</a>. Want a direct reply? Email
+              <a href={`mailto:${SHOW.email}`}>{SHOW.email}</a>.
+            </p>
+            <button class="button ghost" type="button" data-again>Ask another question</button>
+          </div>
+        </div>
+
+        <aside class="stack roomy">
+          <div class="email-card">
+            <h2>{ASK.emailTitle}</h2>
+            <p>{ASK.emailBody}</p>
+            <a class="email-link" href={`mailto:${SHOW.email}?subject=${encodeURIComponent('Question for Mark & Hank')}`}>
+              {SHOW.email}
+            </a>
+          </div>
+          <div class="rule-cols single">
+            {
+              ASK.tips.map(tip => (
+                <div>
+                  <h3>{tip.title}</h3>
+                  <p>{tip.body}</p>
+                </div>
+              ))
+            }
+          </div>
+          <a class="button ghost start" href="/topics">
+            See the topics we cover <Icon name="arrow-right" class="topic-arrow" />
+          </a>
+        </aside>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<script>
+  import {ASKER_ROLE_VALUES} from '../lib/types';
+
+  /** The SAME limits as `src/server/routes/questions.ts` (QUESTION_LIMITS). */
+  const LIMITS = {name: 80, dealership: 120, bodyMin: 10, bodyMax: 2000};
+
+  type Name = 'name' | 'role' | 'dealership' | 'body';
+  const RULES: Record<Name, (value: string) => string | null> = {
+    name: v => (!v ? 'Tell us your first name.' : v.length > LIMITS.name ? `Use at most ${LIMITS.name} characters.` : null),
+    role: v => (ASKER_ROLE_VALUES.includes(v) ? null : 'Pick the one that fits you best.'),
+    dealership: v => (v.length > LIMITS.dealership ? `Use at most ${LIMITS.dealership} characters.` : null),
+    body: v =>
+      !v
+        ? 'Type your question.'
+        : v.length < LIMITS.bodyMin
+          ? 'Give us a little more to go on: at least 10 characters.'
+          : v.length > LIMITS.bodyMax
+            ? `Keep it under ${LIMITS.bodyMax} characters. The best questions are short.`
+            : null,
+  };
+  const ORDER: Name[] = ['name', 'role', 'dealership', 'body'];
+
+  const form = document.querySelector<HTMLFormElement>('[data-ask-form]')!;
+  const done = document.querySelector<HTMLElement>('[data-form-done]')!;
+  const formError = document.querySelector<HTMLElement>('[data-form-error]')!;
+  const submit = document.querySelector<HTMLButtonElement>('[data-submit]')!;
+  const counter = document.querySelector<HTMLElement>('[data-counter]')!;
+  const control = (name: Name) => form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+  const value = (name: Name) => control(name).value.trim();
+
+  // An error shows once the field is left or after a submit attempt; then it follows every keystroke.
+  const shown = new Set<Name>();
+  const serverErrors = new Map<Name, string>();
+
+  function paint(name: Name) {
+    const input = control(name);
+    const field = input.closest('.field')!;
+    const hint = field.querySelector<HTMLElement>('.field-hint');
+    const message = serverErrors.get(name) ?? (shown.has(name) ? RULES[name](value(name)) : null);
+    let error = field.querySelector<HTMLElement>('.field-error');
+    if (message) {
+      if (!error) {
+        error = document.createElement('p');
+        error.className = 'field-error';
+        error.id = `${input.id}-error`;
+        field.append(error);
+      }
+      error.textContent = message;
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-describedby', error.id);
+      if (hint) hint.hidden = true;
+    } else {
+      error?.remove();
+      input.removeAttribute('aria-invalid');
+      if (hint) {
+        hint.hidden = false;
+        input.setAttribute('aria-describedby', hint.id);
+      }
+    }
+  }
+
+  function updateCounter() {
+    const n = value('body').length;
+    counter.textContent =
+      n === 0 ? 'Up to 2000 characters. Leave out customer names.' : `${n} of ${LIMITS.bodyMax} characters. Leave out customer names.`;
+  }
+
+  for (const name of ORDER) {
+    const input = control(name);
+    input.addEventListener('blur', () => {
+      if (value(name) || name === 'role' || shown.has(name)) shown.add(name);
+      paint(name);
+    });
+    input.addEventListener(name === 'role' ? 'change' : 'input', () => {
+      serverErrors.delete(name);
+      if (name === 'role') shown.add(name);
+      if (name === 'body') updateCounter();
+      paint(name);
+    });
+  }
+
+  function setPending(pending: boolean) {
+    submit.disabled = pending;
+    submit.toggleAttribute('aria-busy', pending);
+    submit.replaceChildren();
+    if (pending) {
+      const spin = document.createElement('span');
+      spin.className = 'spinner';
+      spin.setAttribute('aria-hidden', 'true');
+      submit.append(spin, 'Sending…');
+    } else {
+      submit.append('Send my question');
+    }
+  }
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    formError.hidden = true;
+    ORDER.forEach(name => shown.add(name));
+    ORDER.forEach(paint);
+    const first = ORDER.find(name => RULES[name](value(name)));
+    if (first) {
+      control(first).focus();
+      return;
+    }
+
+    setPending(true);
+    try {
+      const res = await fetch('/site-api/questions', {
+        method: 'POST',
+        headers: {'content-type': 'application/json', accept: 'application/json'},
+        body: JSON.stringify({
+          name: value('name'),
+          role: value('role'),
+          dealership: value('dealership'),
+          body: value('body'),
+          okToFeature: (form.elements.namedItem('okToFeature') as HTMLInputElement).checked,
+          website: (form.elements.namedItem('website') as HTMLInputElement).value,
+        }),
+      });
+      if (res.ok) {
+        form.hidden = true;
+        done.hidden = false;
+        done.focus();
+        return;
+      }
+      const answer = (await res.json().catch(() => null)) as {message?: string; field?: string} | null;
+      const field = answer?.field as Name | undefined;
+      if (field && ORDER.includes(field) && answer?.message) {
+        serverErrors.set(field, answer.message);
+        paint(field);
+        control(field).focus();
+      } else {
+        formError.textContent =
+          res.status === 503
+            ? 'Questions can’t be received right now. Please email us instead.'
+            : 'Your question didn’t send. Please try again, or email us instead.';
+        formError.hidden = false;
+      }
+    } catch {
+      formError.textContent = 'You seem to be offline. Check your connection and try again.';
+      formError.hidden = false;
+    } finally {
+      setPending(false);
+    }
+  });
+
+  document.querySelector('[data-again]')!.addEventListener('click', () => {
+    form.reset();
+    shown.clear();
+    serverErrors.clear();
+    ORDER.forEach(paint);
+    updateCounter();
+    done.hidden = true;
+    form.hidden = false;
+    control('name').focus();
+  });
+</script>

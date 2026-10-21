@@ -28,8 +28,9 @@ model Note {
   @@map("notes")
 }
 
-/// A job on the job board (`/jobs`, `/jobs/<slug>`). Site admins
-/// (`community:site:update`) post and edit them from `/portal/jobs`.
+/// The starter template's job board, no longer used: its pages and routes
+/// were removed. Kept because dropping a table needs a migration and the
+/// owner's approval.
 model Job {
   id          Int      @id @default(autoincrement())
   /// URL name, unique: `/jobs/<slug>`.
@@ -70,4 +71,57 @@ model Upload {
 
   @@index([profileId, id])
   @@map("uploads")
+}
+
+/// One episode of Real Car Talk with Mark and Hank (`/episodes`,
+/// `/episodes/<slug>`). Site admins (`community:site:update`) add and edit
+/// them from `/portal/episodes`.
+model Episode {
+  id              Int      @id @default(autoincrement())
+  /// URL name, unique: `/episodes/<slug>`.
+  slug            String   @unique @db.VarChar(120)
+  /// The episode number shown on the site ("Ep. 12"); optional.
+  number          Int?
+  title           String   @db.VarChar(140)
+  /// The short summary on the list (plain text).
+  summary         String   @db.VarChar(600)
+  /// Longer show notes on the episode page; plain text, blank line between paragraphs.
+  notes           String   @default("") @db.VarChar(8000)
+  /// One of the topic slugs in `src/lib/types.ts` (`TOPICS`).
+  topic           String   @db.VarChar(40)
+  /// The YouTube video id (the `v=` part). Null = "video coming soon".
+  youtubeId       String?  @map("youtube_id") @db.VarChar(20)
+  durationMinutes Int?     @map("duration_minutes")
+  /// The date the episode aired; the list is newest first by this.
+  publishedAt     DateTime @map("published_at")
+  /// `published` (listed) or `draft` (only in the dashboard).
+  status          String   @default("published") @db.VarChar(10)
+  createdBy       Int      @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([status, publishedAt, id])
+  @@map("episodes")
+}
+
+/// A listener question sent from `/ask`. Read by site admins in
+/// `/portal/questions`. Never store an email address here: listeners who
+/// want a reply email askmarkandhank@gmail.com themselves.
+model Question {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(80)
+  /// `new-rep`, `veteran`, `bdc`, `manager` or `other`.
+  role        String   @db.VarChar(20)
+  dealership  String   @default("") @db.VarChar(120)
+  body        String   @db.VarChar(2000)
+  /// The listener agreed that their first name may be read on the show.
+  okToFeature Boolean  @default(false) @map("ok_to_feature")
+  /// `new`, `picked` (going on the show) or `done`.
+  status      String   @default("new") @db.VarChar(10)
+  /// The member's profile id when they were signed in, else null.
+  profileId   Int?     @map("profile_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([status, id])
+  @@map("questions")
 }

@@ -1,0 +1,134 @@
+---
+/**
+ * One episode: the video (YouTube, privacy-enhanced), the summary and the show
+ * notes. Rendered on the server from `GET /site-api/episodes/:slug`; a draft
+ * or unknown episode answers a real 404. Notes are plain text, rendered as
+ * paragraphs (never as HTML).
+ */
+import EpisodeThumb from '../../components/EpisodeThumb.astro';
+import Icon from '../../components/Icon.astro';
+import NotFound from '../../components/NotFound.astro';
+import {SHOW} from '../../content/site';
+import Base from '../../layouts/Base.astro';
+import {formatDate} from '../../lib/format';
+import {type Episode, type EpisodesPage, topicLabel} from '../../lib/types';
+import {read} from '../../server/backend';
+import {pageContext} from '../../server/page';
+
+const slug = Astro.params.slug ?? '';
+const {api, site, viewer, abilities} = await pageContext(Astro.request, Astro.response);
+const episode = (await read<{episode: Episode}>(api.episodes[':slug'].$get({param: {slug}})))?.episode ?? null;
+if (!episode) Astro.response.status = 404;
+
+// Two more from the same topic, for "Keep watching".
+const related = episode
+  ? ((await read<EpisodesPage>(api.episodes.$get({query: {topic: episode.topic, perPage: '3'}})))?.episodes ?? [])
+      .filter(e => e.id !== episode.id)
+      .slice(0, 2)
+  : [];
+const paragraphs = episode?.notes.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean) ?? [];
+const youtubeUrl = episode?.youtubeId ? `https://www.youtube.com/watch?v=${encodeURIComponent(episode.youtubeId)}` : null;
+const image = episode?.youtubeId ? `https://i.ytimg.com/vi/${encodeURIComponent(episode.youtubeId)}/hqdefault.jpg` : null;
+---
+
+{
+  episode ? (
+    <Base site={site} viewer={viewer} title={episode.title} description={episode.summary} image={image}>
+      <main>
+        <section class="band tight">
+          <div class="wrap">
+            <div class="episode-head">
+              <a class="back-link" href="/episodes">
+                <Icon name="arrow-left" class="topic-arrow" /> All episodes
+              </a>
+              <p class="episode-meta">
+                {episode.number && <span class="badge grey">Episode {episode.number}</span>}
+                <a class="badge" href={`/episodes?topic=${episode.topic}`}>
+                  {topicLabel(episode.topic)}
+                </a>
+                <span>{formatDate(episode.publishedAt)}</span>
+                {episode.durationMinutes && <span>{episode.durationMinutes} min</span>}
+              </p>
+              <h1>{episode.title}</h1>
+            </div>
+
+            <div class="frame ratio-video video-frame">
+              {episode.youtubeId ? (
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(episode.youtubeId)}?rel=0`}
+                  title={episode.title}
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowfullscreen
+                />
+              ) : (
+                <EpisodeThumb episode={episode} eager />
+              )}
+            </div>
+
+            <div class="show-notes">
+              <div class="stack">
+                <p class="lead lead-strong">{episode.summary}</p>
+                {paragraphs.length > 0 && (
+                  <div class="prose">
+                    <h2 class="card-title">Show notes</h2>
+                    {paragraphs.map(p => <p>{p}</p>)}
+                  </div>
+                )}
+                <div class="actions">
+                  {youtubeUrl && (
+                    <a class="button ghost" href={youtubeUrl} target="_blank" rel="noopener noreferrer">
+                      <Icon name="youtube" class="topic-arrow" /> Watch on YouTube
+                    </a>
+                  )}
+                  {abilities.manageShow && <a class="button link" href="/portal/episodes">Edit in the dashboard</a>}
+                </div>
+              </div>
+              <aside class="aside-card" aria-labelledby="talk-title">
+                <h2 id="talk-title">Talk about this episode</h2>
+                <p>Tried it on the floor? Tell the community what happened, or ask what to do when it doesn’t work.</p>
+                <a class="button" href="/join" hidden={viewer.state === 'member'}>Join the Community</a>
+                <a class="button" href="/feeds" hidden={viewer.state !== 'member'}>Open the community</a>
+                <p class="small">
+                  Or send your question to <a href={`mailto:${SHOW.email}`}>{SHOW.email}</a>
+                </p>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        {related.length > 0 && (
+          <section class="band tight band-alt" aria-labelledby="related-title">
+            <div class="wrap">
+              <div class="section-head">
+                <h2 class="h-md" id="related-title">
+                  More on {topicLabel(episode.topic).toLowerCase()}
+                </h2>
+                <a class="more" href={`/episodes?topic=${episode.topic}`}>All on this topic →</a>
+              </div>
+              <ul class="episode-grid">
+                {related.map(e => (
+                  <li>
+                    <a class="episode-card" href={`/episodes/${encodeURIComponent(e.slug)}`}>
+                      <EpisodeThumb episode={e} />
+                      <p class="episode-meta">
+                        <span>{formatDate(e.publishedAt)}</span>
+                        {e.durationMinutes && <span>· {e.durationMinutes} min</span>}
+                      </p>
+                      <h3>{e.title}</h3>
+                      <p>{e.summary}</p>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
+      </main>
+    </Base>
+  ) : (
+    <Base site={site} viewer={viewer} title="Episode not found">
+      <NotFound site={site} />
+    </Base>
+  )
+}

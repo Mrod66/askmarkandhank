@@ -5,9 +5,12 @@ import {type ChangeEvent, type FormEvent, useState} from 'react';
 import {logout, storeFile} from '../platform/browser';
 import {
   type Abilities,
-  type Job,
-  JOB_TYPES,
-  type JobsPage,
+  ASKER_ROLES,
+  type Episode,
+  type EpisodesPage,
+  type QuestionsPage,
+  TOPICS,
+  topicLabel,
   type Member,
   type UploadRow as Upload,
   type Viewer,
@@ -38,6 +41,17 @@ const initials = (name: string) =>
     .slice(0, 2)
     .map(word => word[0]?.toUpperCase() ?? '')
     .join('');
+
+/** Grey placeholder rows while a list loads (no "Loading…" text). */
+function SkeletonRows({rows = 3}: {rows?: number}) {
+  return (
+    <div className="list-plain" aria-busy="true" aria-label="Loading">
+      {Array.from({length: rows}, (_, i) => (
+        <div key={i} className="skeleton" style={{height: 56}} />
+      ))}
+    </div>
+  );
+}
 
 function ErrorNote({error}: {error: Error}) {
   return <p className="notice">{error.message}</p>;
@@ -88,7 +102,13 @@ const NAV_GROUPS: {
       {to: '/members', label: 'Members'},
     ],
   },
-  {label: 'Manage', items: [{to: '/jobs', label: 'Jobs', ability: 'manageJobs'}]},
+  {
+    label: 'The show',
+    items: [
+      {to: '/episodes', label: 'Episodes', ability: 'manageShow'},
+      {to: '/questions', label: 'Questions', ability: 'manageShow'},
+    ],
+  },
 ];
 
 /** The screen's title for the top bar: the deepest sidebar item it is under. */
@@ -237,23 +257,28 @@ const overviewRoute = createRoute({
   component: function Overview() {
     const me = useMe();
     const viewer = me.data?.viewer;
-    const manageJobs = me.data?.abilities.manageJobs ?? false;
     const health = useQuery({
       queryKey: ['health'],
       queryFn: () =>
         read<{preview: boolean; database: boolean; communityKey: boolean}>(api.health.$get()),
     });
-    // Under the screens' query keys (['uploads'], ['jobs']): a save there
+    // Under the screens' query keys (['uploads'], ['episodes']): a save there
     // invalidates these too, so the numbers never go stale.
     const uploads = useQuery({
       queryKey: ['uploads', 'first'],
       queryFn: () =>
         read<{uploads: Upload[]; nextBefore: number | null}>(api.uploads.$get({query: {before: undefined}})),
     });
-    const jobs = useQuery({
-      queryKey: ['jobs', 'manage', 'first'],
-      queryFn: () => read<JobsPage>(api.jobs.manage.$get({query: {before: undefined}})),
-      enabled: manageJobs,
+    const manageShow = me.data?.abilities.manageShow ?? false;
+    const episodes = useQuery({
+      queryKey: ['episodes', 'manage', 'first'],
+      queryFn: () => read<EpisodesPage>(api.episodes.manage.$get({query: {before: undefined}})),
+      enabled: manageShow,
+    });
+    const newQuestions = useQuery({
+      queryKey: ['questions', 'new', 'first'],
+      queryFn: () => read<QuestionsPage>(api.questions.$get({query: {status: 'new', before: undefined}})),
+      enabled: manageShow,
     });
     const recent = uploads.data?.uploads.slice(0, 5) ?? [];
 
@@ -278,18 +303,26 @@ const overviewRoute = createRoute({
         )}
 
         <div className="stat-grid">
+          {manageShow && (
+            <Stat
+              label="Episodes"
+              value={pageCount(episodes.data?.episodes, Boolean(episodes.data?.nextBefore))}
+              to="/episodes"
+            />
+          )}
+          {manageShow && (
+            <Stat
+              label="New questions"
+              value={pageCount(newQuestions.data?.questions, Boolean(newQuestions.data?.nextBefore))}
+              hint="From the Ask Mark & Hank page"
+              to="/questions"
+            />
+          )}
           <Stat
             label="My files"
             value={pageCount(uploads.data?.uploads, Boolean(uploads.data?.nextBefore))}
             to="/uploads"
           />
-          {manageJobs && (
-            <Stat
-              label="Jobs"
-              value={pageCount(jobs.data?.jobs, Boolean(jobs.data?.nextBefore))}
-              to="/jobs"
-            />
-          )}
           <Stat
             label="Site Database"
             value={health.data ? (health.data.database ? 'Connected' : 'Off') : null}
@@ -300,6 +333,46 @@ const overviewRoute = createRoute({
             value={health.data ? (health.data.communityKey ? 'Available' : 'Missing') : null}
           />
         </div>
+
+        {manageShow && (
+          <section className="app-card">
+            <div className="app-card-head">
+              <h3>Newest listener questions</h3>
+              <Link to="/questions">View all</Link>
+            </div>
+            {newQuestions.error ? (
+              <ErrorNote error={newQuestions.error} />
+            ) : newQuestions.isPending ? (
+              <SkeletonRows />
+            ) : newQuestions.data.questions.length ? (
+              <table className="app-table">
+                <thead>
+                  <tr>
+                    <th>From</th>
+                    <th>Question</th>
+                    <th>Sent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {newQuestions.data.questions.slice(0, 5).map(q => (
+                    <tr key={q.id}>
+                      <td>{q.name}</td>
+                      <td className="muted">{q.body.length > 110 ? `${q.body.slice(0, 110)}…` : q.body}</td>
+                      <td className="muted">{when(q.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="app-empty">
+                <p className="muted">No new questions. Share the Ask page with your audience.</p>
+                <a className="button ghost" href="/ask">
+                  Open the Ask page
+                </a>
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="app-card">
           <div className="app-card-head">
@@ -507,57 +580,76 @@ const membersRoute = createRoute({
   },
 });
 
-const EMPTY_JOB = {
+// ------------------------------------------------------------- the show --
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const EMPTY_EPISODE = {
   title: '',
-  company: '',
-  location: '',
-  type: 'full-time',
-  remote: false,
-  description: '',
-  applyUrl: '',
+  number: '',
+  publishedAt: today(),
+  topic: TOPICS[0].slug as string,
+  youtube: '',
+  durationMinutes: '',
+  summary: '',
+  notes: '',
+  status: 'published',
 };
 
-/** The job form's rules: the SAME limits `src/server/routes/jobs.ts` enforces. */
-const JOB_RULES = {
-  title: [rules.required('Enter a title.'), rules.maxLength(120)],
-  company: [rules.required('Enter the company.'), rules.maxLength(80)],
-  location: [rules.required('Enter a location, or "Anywhere".'), rules.maxLength(80)],
-  description: [
-    rules.required('Describe the job.'),
-    rules.minLength(20, 'Write at least 20 characters so applicants know what it is.'),
-    rules.maxLength(10000),
+/** The episode form's rules: the SAME limits `src/server/routes/episodes.ts` enforces. */
+const EPISODE_RULES = {
+  title: [rules.required('Give the episode a title.'), rules.maxLength(140)],
+  number: [rules.pattern(/^[1-9]\d{0,3}$/, 'Use a whole number from 1 to 9999, or leave it empty.')],
+  publishedAt: [
+    rules.required('Pick the date the episode aired.'),
+    rules.pattern(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-21.'),
   ],
-  applyUrl: [
-    rules.required('Add where to apply.'),
-    rules.pattern(/^(https:\/\/|mailto:)\S+$/i, 'Use an https:// link or a mailto: address.'),
-    rules.maxLength(500),
+  youtube: [
+    rules.maxLength(200),
+    rules.pattern(
+      /^([\w-]{11}|https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\/\S+)$/,
+      'Paste a YouTube link, like https://youtu.be/abc123XYZ_0, or leave it empty.'
+    ),
   ],
+  durationMinutes: [rules.pattern(/^[1-9]\d{0,2}$/, 'Use a whole number of minutes, like 8.')],
+  summary: [
+    rules.required('Write a short summary for the episode list.'),
+    rules.minLength(20, 'Write at least 20 characters so viewers know what it covers.'),
+    rules.maxLength(600),
+  ],
+  notes: [rules.maxLength(8000)],
 };
 
-/** Site admins: post, edit, close and delete jobs (`/site-api/jobs`, `MANAGE_JOBS`). */
-const jobsRoute = createRoute({
+/** Site admins: add, edit, hide and delete episodes (`/site-api/episodes`, `MANAGE_SHOW`). */
+const episodesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/jobs',
-  component: function Jobs() {
+  path: '/episodes',
+  component: function Episodes() {
     const queryClient = useQueryClient();
     const [editing, setEditing] = useState<number | 'new' | null>(null);
-    const form = useForm(EMPTY_JOB, JOB_RULES);
-    const jobs = useInfiniteQuery({
-      queryKey: ['jobs', 'manage'],
+    const form = useForm(EMPTY_EPISODE, EPISODE_RULES);
+    const episodes = useInfiniteQuery({
+      queryKey: ['episodes', 'manage'],
       initialPageParam: undefined as string | undefined,
-      queryFn: ({pageParam}) => read<JobsPage>(api.jobs.manage.$get({query: {before: pageParam}})),
+      queryFn: ({pageParam}) => read<EpisodesPage>(api.episodes.manage.$get({query: {before: pageParam}})),
       getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
     });
-    const refresh = () => queryClient.invalidateQueries({queryKey: ['jobs']});
+    const refresh = () => queryClient.invalidateQueries({queryKey: ['episodes']});
     const close = () => {
       setEditing(null);
-      form.reset();
+      form.reset({...EMPTY_EPISODE, publishedAt: today()});
     };
     const save = useMutation({
-      mutationFn: (values: typeof EMPTY_JOB) =>
-        editing === 'new'
-          ? read<{job: Job}>(api.jobs.$post({json: values}))
-          : read<{job: Job}>(api.jobs[':id'].$patch({param: {id: String(editing)}, json: values})),
+      mutationFn: (values: typeof EMPTY_EPISODE) => {
+        const json = {
+          ...values,
+          number: values.number.trim() ? Number(values.number) : null,
+          durationMinutes: values.durationMinutes.trim() ? Number(values.durationMinutes) : null,
+        };
+        return editing === 'new'
+          ? read<{episode: Episode}>(api.episodes.$post({json}))
+          : read<{episode: Episode}>(api.episodes[':id'].$patch({param: {id: String(editing)}, json}));
+      },
       onSuccess: () => {
         close();
         return refresh();
@@ -565,16 +657,18 @@ const jobsRoute = createRoute({
     });
     const open = useMutation({
       mutationFn: (id: number) =>
-        read<{job: Job}>(api.jobs.manage[':id'].$get({param: {id: String(id)}})),
-      onSuccess: ({job}, id) => {
+        read<{episode: Episode}>(api.episodes.manage[':id'].$get({param: {id: String(id)}})),
+      onSuccess: ({episode}, id) => {
         form.reset({
-          title: job.title,
-          company: job.company,
-          location: job.location,
-          type: job.type,
-          remote: job.remote,
-          description: job.description,
-          applyUrl: job.applyUrl,
+          title: episode.title,
+          number: episode.number ? String(episode.number) : '',
+          publishedAt: episode.publishedAt.slice(0, 10),
+          topic: episode.topic,
+          youtube: episode.youtubeId ? `https://youtu.be/${episode.youtubeId}` : '',
+          durationMinutes: episode.durationMinutes ? String(episode.durationMinutes) : '',
+          summary: episode.summary,
+          notes: episode.notes,
+          status: episode.status,
         });
         save.reset();
         setEditing(id);
@@ -582,93 +676,108 @@ const jobsRoute = createRoute({
     });
     const setStatus = useMutation({
       mutationFn: ({id, status}: {id: number; status: string}) =>
-        read(api.jobs[':id'].$patch({param: {id: String(id)}, json: {status}})),
+        read(api.episodes[':id'].$patch({param: {id: String(id)}, json: {status}})),
       onSuccess: refresh,
     });
     const remove = useMutation({
-      mutationFn: (id: number) => read(api.jobs[':id'].$delete({param: {id: String(id)}})),
+      mutationFn: (id: number) => read(api.episodes[':id'].$delete({param: {id: String(id)}})),
       onSuccess: refresh,
     });
-    // Which ROW is busy: only that row's buttons show it, and the row cannot be acted on twice.
     const busyId =
       (open.isPending && open.variables) ||
       (setStatus.isPending && setStatus.variables?.id) ||
       (remove.isPending && remove.variables) ||
       null;
-    const rows = jobs.data?.pages.flatMap(page => page.jobs) ?? [];
+    const rows = episodes.data?.pages.flatMap(page => page.episodes) ?? [];
 
     return (
       <div className="app-page">
         <div className="app-page-head">
-          <h2>Jobs</h2>
+          <div>
+            <h2>Episodes</h2>
+            <p className="muted">
+              Listed newest first on <a href="/episodes">/episodes</a>; the newest one plays on the home page.
+            </p>
+          </div>
           {editing === null && (
             <Button
               onClick={() => {
-                form.reset();
+                form.reset({...EMPTY_EPISODE, publishedAt: today()});
                 save.reset();
                 setEditing('new');
               }}>
-              Post a job
+              Add an episode
             </Button>
           )}
         </div>
-        <p className="muted">
-          Listed on <a href="/jobs">/jobs</a>. Stored in this site's database; only site admins see this screen.
-        </p>
 
         {editing !== null && (
           <form className="app-card form-card" onSubmit={form.submit(values => save.mutate(values))} noValidate>
-            <h3>{editing === 'new' ? 'New job' : 'Edit job'}</h3>
+            <h3>{editing === 'new' ? 'New episode' : 'Edit episode'}</h3>
             <div className="form-grid">
-              <Field id="f-title" label="Title" error={form.error('title')}>
-                <input {...form.field('title')} autoComplete="off" />
-              </Field>
-              <Field id="f-company" label="Company" error={form.error('company')}>
-                <input {...form.field('company')} autoComplete="organization" />
-              </Field>
-              <Field id="f-location" label="Location" error={form.error('location')}>
-                <input {...form.field('location')} />
-              </Field>
-              <Field id="f-type" label="Job type">
-                <select {...form.field('type')}>
-                  {JOB_TYPES.map(type => (
-                    <option key={type} value={type}>
-                      {type}
+              <div className="full">
+                <Field id="f-title" label="Title" error={form.error('title')}>
+                  <input {...form.field('title')} autoComplete="off" />
+                </Field>
+              </div>
+              <div className="full">
+                <Field
+                  id="f-youtube"
+                  label="YouTube link"
+                  optional
+                  hint="Paste the video’s link. Leave empty to show “Video coming soon”."
+                  error={form.error('youtube')}>
+                  <input {...form.field('youtube')} inputMode="url" placeholder="https://youtu.be/abc123XYZ_0" />
+                </Field>
+              </div>
+              <Field id="f-topic" label="Topic">
+                <select {...form.field('topic')}>
+                  {TOPICS.map(topic => (
+                    <option key={topic.slug} value={topic.slug}>
+                      {topic.label}
                     </option>
                   ))}
                 </select>
               </Field>
-              <label className="check full">
-                <input
-                  type="checkbox"
-                  checked={Boolean(form.values.remote)}
-                  onChange={event => form.set('remote', event.target.checked)}
-                />{' '}
-                Remote
-              </label>
+              <Field id="f-publishedAt" label="Air date" error={form.error('publishedAt')}>
+                <input {...form.field('publishedAt')} type="date" />
+              </Field>
+              <Field id="f-number" label="Episode number" optional error={form.error('number')}>
+                <input {...form.field('number')} inputMode="numeric" placeholder="8" />
+              </Field>
+              <Field id="f-durationMinutes" label="Length in minutes" optional error={form.error('durationMinutes')}>
+                <input {...form.field('durationMinutes')} inputMode="numeric" placeholder="7" />
+              </Field>
               <div className="full">
                 <Field
-                  id="f-description"
-                  label="Description"
-                  hint="Leave a blank line between paragraphs."
-                  error={form.error('description')}>
-                  <textarea {...form.field('description')} rows={8} />
+                  id="f-summary"
+                  label="Summary"
+                  hint="Two or three sentences for the episode list. 20 to 600 characters."
+                  error={form.error('summary')}>
+                  <textarea {...form.field('summary')} rows={3} />
                 </Field>
               </div>
               <div className="full">
                 <Field
-                  id="f-applyUrl"
-                  label="Apply link"
-                  hint="An https:// link or a mailto: address."
-                  error={form.error('applyUrl')}>
-                  <input {...form.field('applyUrl')} inputMode="url" />
+                  id="f-notes"
+                  label="Show notes"
+                  optional
+                  hint="Shown on the episode’s page. Leave a blank line between paragraphs."
+                  error={form.error('notes')}>
+                  <textarea {...form.field('notes')} rows={8} />
                 </Field>
               </div>
+              <Field id="f-status" label="Visibility">
+                <select {...form.field('status')}>
+                  <option value="published">Published: listed on the site</option>
+                  <option value="draft">Draft: only here</option>
+                </select>
+              </Field>
             </div>
             {save.error && <ErrorNote error={save.error} />}
             <div className="actions">
               <Button type="submit" pending={save.isPending} pendingLabel="Saving…">
-                {editing === 'new' ? 'Post job' : 'Save changes'}
+                {editing === 'new' ? 'Add episode' : 'Save changes'}
               </Button>
               <Button variant="ghost" onClick={close} disabled={save.isPending}>
                 Cancel
@@ -677,50 +786,57 @@ const jobsRoute = createRoute({
           </form>
         )}
 
-        {jobs.error && <ErrorNote error={jobs.error} />}
-        {jobs.isPending && <p className="muted">Loading…</p>}
-        {rows.length === 0 && jobs.isSuccess && (
+        {episodes.error && <ErrorNote error={episodes.error} />}
+        {episodes.isPending && <SkeletonRows />}
+        {rows.length === 0 && episodes.isSuccess && (
           <div className="app-empty">
-            <p className="muted">No jobs yet.</p>
+            <p className="muted">No episodes yet. Add your first one to fill the home page and the episodes list.</p>
           </div>
         )}
         <ul className="files">
-          {rows.map(job => {
-            const busy = busyId === job.id;
+          {rows.map(episode => {
+            const busy = busyId === episode.id;
             return (
-              <li key={job.id} aria-busy={busy || undefined}>
+              <li key={episode.id} aria-busy={busy || undefined}>
                 <div>
-                  <a href={`/jobs/${encodeURIComponent(job.slug)}`}>{job.title}</a>
+                  <a href={`/episodes/${encodeURIComponent(episode.slug)}`}>
+                    {episode.number ? `Ep. ${episode.number}: ` : ''}
+                    {episode.title}
+                  </a>
                   <span className="meta">
-                    {job.company} · {job.location} · {job.status}
+                    {topicLabel(episode.topic)} · {episode.publishedAt.slice(0, 10)} ·{' '}
+                    {episode.youtubeId ? 'video linked' : 'no video yet'}
+                    {episode.status === 'draft' ? ' · draft' : ''}
                   </span>
                 </div>
                 <div className="row-actions">
                   <Button
                     variant="link"
                     size="sm"
-                    pending={open.isPending && open.variables === job.id}
+                    pending={open.isPending && open.variables === episode.id}
                     pendingLabel="Opening…"
                     disabled={busy || save.isPending}
-                    onClick={() => open.mutate(job.id)}>
+                    onClick={() => open.mutate(episode.id)}>
                     Edit
                   </Button>
                   <Button
                     variant="link"
                     size="sm"
-                    pending={setStatus.isPending && setStatus.variables?.id === job.id}
-                    pendingLabel={job.status === 'open' ? 'Closing…' : 'Reopening…'}
+                    pending={setStatus.isPending && setStatus.variables?.id === episode.id}
+                    pendingLabel={episode.status === 'published' ? 'Hiding…' : 'Publishing…'}
                     disabled={busy}
-                    onClick={() => setStatus.mutate({id: job.id, status: job.status === 'open' ? 'closed' : 'open'})}>
-                    {job.status === 'open' ? 'Close' : 'Reopen'}
+                    onClick={() =>
+                      setStatus.mutate({id: episode.id, status: episode.status === 'published' ? 'draft' : 'published'})
+                    }>
+                    {episode.status === 'published' ? 'Hide' : 'Publish'}
                   </Button>
                   <Button
                     variant="danger"
                     size="sm"
-                    pending={remove.isPending && remove.variables === job.id}
+                    pending={remove.isPending && remove.variables === episode.id}
                     pendingLabel="Deleting…"
                     disabled={busy}
-                    onClick={() => window.confirm(`Delete “${job.title}”?`) && remove.mutate(job.id)}>
+                    onClick={() => window.confirm(`Delete “${episode.title}”?`) && remove.mutate(episode.id)}>
                     Delete
                   </Button>
                 </div>
@@ -731,11 +847,157 @@ const jobsRoute = createRoute({
         {(open.error || setStatus.error || remove.error) && (
           <ErrorNote error={(open.error ?? setStatus.error ?? remove.error)!} />
         )}
-        {jobs.hasNextPage && (
+        {episodes.hasNextPage && (
           <Button
             variant="ghost"
-            onClick={() => jobs.fetchNextPage()}
-            pending={jobs.isFetchingNextPage}
+            onClick={() => episodes.fetchNextPage()}
+            pending={episodes.isFetchingNextPage}
+            pendingLabel="Loading…">
+            Load more
+          </Button>
+        )}
+      </div>
+    );
+  },
+});
+
+const roleLabel = (value: string) => ASKER_ROLES.find(role => role.value === value)?.label ?? value;
+const STATUS_TABS = [
+  {value: 'new', label: 'New'},
+  {value: 'picked', label: 'Picked for the show'},
+  {value: 'done', label: 'Done'},
+  {value: '', label: 'All'},
+];
+
+/** Site admins: read listener questions from /ask and sort them. */
+const questionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/questions',
+  component: function Questions() {
+    const queryClient = useQueryClient();
+    const [status, setStatusFilter] = useState('new');
+    const questions = useInfiniteQuery({
+      queryKey: ['questions', status],
+      initialPageParam: undefined as string | undefined,
+      queryFn: ({pageParam}) =>
+        read<QuestionsPage>(api.questions.$get({query: {status, before: pageParam}})),
+      getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
+    });
+    const refresh = () => queryClient.invalidateQueries({queryKey: ['questions']});
+    const move = useMutation({
+      mutationFn: ({id, status}: {id: number; status: string}) =>
+        read(api.questions[':id'].$patch({param: {id: String(id)}, json: {status}})),
+      onSuccess: refresh,
+    });
+    const remove = useMutation({
+      mutationFn: (id: number) => read(api.questions[':id'].$delete({param: {id: String(id)}})),
+      onSuccess: refresh,
+    });
+    const busyId = (move.isPending && move.variables?.id) || (remove.isPending && remove.variables) || null;
+    const rows = questions.data?.pages.flatMap(page => page.questions) ?? [];
+
+    return (
+      <div className="app-page">
+        <div className="app-page-head">
+          <div>
+            <h2>Listener questions</h2>
+            <p className="muted">
+              Sent from <a href="/ask">the Ask Mark &amp; Hank page</a>. Email questions arrive at
+              askmarkandhank@gmail.com instead.
+            </p>
+          </div>
+        </div>
+
+        <div className="chip-tabs" role="group" aria-label="Show questions by status" style={{margin: 0}}>
+          {STATUS_TABS.map(tab => (
+            <button
+              key={tab.value}
+              type="button"
+              className="chip-tab"
+              aria-current={status === tab.value ? 'page' : undefined}
+              onClick={() => setStatusFilter(tab.value)}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {questions.error && <ErrorNote error={questions.error} />}
+        {questions.isPending && <SkeletonRows />}
+        {rows.length === 0 && questions.isSuccess && (
+          <div className="app-empty">
+            <p className="muted">
+              {status === 'new' ? 'No new questions. Share the Ask page with your audience.' : 'Nothing here yet.'}
+            </p>
+            <a className="button ghost" href="/ask">
+              Open the Ask page
+            </a>
+          </div>
+        )}
+        <ul className="list-plain">
+          {rows.map(q => {
+            const busy = busyId === q.id;
+            return (
+              <li key={q.id} className="question-row" aria-busy={busy || undefined}>
+                <div>
+                  <strong>{q.name}</strong>
+                  <span className="meta">
+                    {' '}
+                    · {roleLabel(q.role)}
+                    {q.dealership ? ` · ${q.dealership}` : ''} · {when(q.createdAt)}
+                  </span>
+                  <p className="question-body">{q.body}</p>
+                  <p className="meta" style={{marginTop: 8}}>
+                    {q.okToFeature ? (
+                      <span className="badge success">OK to read on the show</span>
+                    ) : (
+                      <span className="badge grey">Do not read their name on air</span>
+                    )}{' '}
+                    {q.status !== 'new' && <span className="badge">{q.status === 'picked' ? 'Picked' : 'Done'}</span>}
+                  </p>
+                </div>
+                <div className="row-actions">
+                  {q.status !== 'picked' && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      pending={move.isPending && move.variables?.id === q.id && move.variables.status === 'picked'}
+                      pendingLabel="Saving…"
+                      disabled={busy}
+                      onClick={() => move.mutate({id: q.id, status: 'picked'})}>
+                      Pick for the show
+                    </Button>
+                  )}
+                  {q.status !== 'done' && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      pending={move.isPending && move.variables?.id === q.id && move.variables.status === 'done'}
+                      pendingLabel="Saving…"
+                      disabled={busy}
+                      onClick={() => move.mutate({id: q.id, status: 'done'})}>
+                      Mark done
+                    </Button>
+                  )}
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    pending={remove.isPending && remove.variables === q.id}
+                    pendingLabel="Deleting…"
+                    disabled={busy}
+                    onClick={() => window.confirm(`Delete the question from ${q.name}?`) && remove.mutate(q.id)}>
+                    Delete
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {(move.error || remove.error) && <ErrorNote error={(move.error ?? remove.error)!} />}
+        {questions.hasNextPage && (
+          <Button
+            variant="ghost"
+            onClick={() => questions.fetchNextPage()}
+            pending={questions.isFetchingNextPage}
             pendingLabel="Loading…">
             Load more
           </Button>
@@ -749,5 +1011,6 @@ export const routeTree = rootRoute.addChildren([
   overviewRoute,
   uploadsRoute,
   membersRoute,
-  jobsRoute,
+  episodesRoute,
+  questionsRoute,
 ]);

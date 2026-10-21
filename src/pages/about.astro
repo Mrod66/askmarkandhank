@@ -1,32 +1,95 @@
 ---
-import BrandMark from '../components/BrandMark.astro';
-import {ABOUT, withName} from '../content/site';
+/**
+ * About the show and its hosts. Static: built once, served as a file. Words
+ * and photos in `src/content/site.ts` (`ABOUT`, `PHOTOS`).
+ */
+import Icon from '../components/Icon.astro';
+import {ABOUT, PHOTOS, SHOW} from '../content/site';
 import Base from '../layouts/Base.astro';
 import {staticContext} from '../server/page';
 
-// Static: built once, served as a file. The header fills the visitor in, in the browser.
 export const prerender = true;
 
 const {site, viewer} = await staticContext(Astro.request);
-const name = site?.name ?? 'Community';
 ---
 
-<Base site={site} viewer={viewer} isStatic title="About" description={withName(ABOUT.lede, name)}>
-  <main class="wrap narrow section">
-    <BrandMark site={site} size={56} />
-    <h1 data-brand-text={ABOUT.title}>{withName(ABOUT.title, name)}</h1>
-    <p class="lede">{withName(ABOUT.lede, name)}</p>
-    {
-      ABOUT.sections.map(section => (
-        <section class="about-section">
-          <h2>{section.heading}</h2>
-          <p>{withName(section.body, name)}</p>
-        </section>
-      ))
-    }
-    <div class="actions">
-      <a class="button" href="/register?redirectTo=%2Fabout" data-brand-text="Join {name}">Join {name}</a>
-      <a class="button ghost" href="/blog">Read the blog</a>
-    </div>
+<Base site={site} viewer={viewer} isStatic title="About" description={ABOUT.lede}>
+  <main>
+    <section class="band tight">
+      <div class="wrap stack">
+        <p class="eyebrow">{ABOUT.eyebrow}</p>
+        <h1 class="page-title">{ABOUT.title}</h1>
+        <p class="lead">{ABOUT.lede}</p>
+      </div>
+    </section>
+
+    <section class="wrap page-body" aria-label="The hosts">
+      <div class="hosts">
+        {
+          ABOUT.hosts.map(host => (
+            <article class="host" aria-labelledby={`host-${host.key}`}>
+              {host.photo ? (
+                <div class="frame ratio-portrait">
+                  <img src={host.photo} alt={`Portrait of ${host.name}`} loading="lazy" width="1000" height="1250" />
+                </div>
+              ) : (
+                <div class="host-initials" aria-hidden="true">
+                  {host.initials}
+                </div>
+              )}
+              <p class="host-role">{host.role}</p>
+              <h2 id={`host-${host.key}`}>{host.name}</h2>
+              {host.paragraphs.map(p => (
+                <p class="body-copy">{p}</p>
+              ))}
+              <ul class="fact-list">
+                {host.facts.map(fact => (
+                  <li>
+                    <Icon name="check" />
+                    {fact}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="band band-alt" aria-labelledby="why-title">
+      <div class="wrap split">
+        <div class="stack">
+          <p class="eyebrow">{ABOUT.why.eyebrow}</p>
+          <h2 class="h-section" id="why-title">{ABOUT.why.title}</h2>
+          {ABOUT.why.paragraphs.map(p => <p class="body-copy">{p}</p>)}
+        </div>
+        <div class="stack roomy">
+          <div class="frame ratio-photo">
+            <img
+              src={PHOTOS.handshake}
+              alt="A salesperson and a customer shaking hands across a desk"
+              loading="lazy"
+              width="1600"
+              height="1200"
+            />
+          </div>
+          <p class="big-quote">“{ABOUT.why.quote}”</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="next-title">
+      <div class="wrap split">
+        <div class="stack">
+          <h2 class="h-md" id="next-title">Start with an episode. Stay for the people.</h2>
+          <p class="lead">{SHOW.tagline}</p>
+        </div>
+        <div class="actions">
+          <a class="button lg" href="/join" data-guest-only>Join the Community</a>
+          <a class="button lg" href="/feeds" data-member-only hidden>Open the community</a>
+          <a class="button lg ghost" href="/episodes">Watch the episodes</a>
+        </div>
+      </div>
+    </section>
   </main>
 </Base>
